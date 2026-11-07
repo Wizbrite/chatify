@@ -3,63 +3,62 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../lib/utils.js";
+import { sendWelcomeEmail } from "../emails/emailHandlers.js";
+import { ENV } from "../lib/env.js";
   
 export const signup = async (req, res) => {
-    const {fullName,email,password} = req.body; // this is the data we are expecteing. assign this to req.body
+    const { fullName, email, password } = req.body;
 
-    try{
-        if(!fullName || !email || !password){
-            return res.status(400).json({message:"all fields required"}); //bad request
+    try {
+        if (!fullName || !email || !password) {
+            return res.status(400).json({ message: "all fields required" });
         }
 
-        if(password.length<6){
-            return res.status(400).json({message:"password should be at least 6 characters long!"});
+        if (password.length < 6) {
+            return res.status(400).json({ message: "password should be at least 6 characters long!" });
         }
 
-        //check if emails valid: regex
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)){
-            return res.status(400).json({message:"Invalid email format"});
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ message: "Invalid email format" });
         }
 
-        const user = await User.findOne({email});
-        if(user) return res.status(400).json({message:"Email aready exists"})
+        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        if (existingUser) {
+            return res.status(400).json({ message: "Email already exists" });
+        }
 
-        //hash password if no user is all conditions are satisified
-        const salt = await bcrypt.genSalt(10)
-        const hashPassword = await bcrypt.hash(password,salt);
+        const salt = await bcrypt.genSalt(10);
+        const hashPassword = await bcrypt.hash(password, salt);
 
-        //create user with credentials gotten
         const newUser = new User({
             fullName,
-            email,
+            email: email.toLowerCase(),
             password: hashPassword
-        })
+        });
 
-        if(newUser){
+        const savedUser = await newUser.save();
+        generateToken(savedUser._id, res);
 
-            const savedUser = await newUser.save()
-            //call to function in utils
-            generateToken(savedUser._id,res)
+        res.status(201).json({
+            _id: savedUser._id,
+            fullName: savedUser.fullName,
+            email: savedUser.email,
+            profilePic: savedUser.profilePic
+        });
 
-            //return these values to client
+        //email display
 
-            res.status(201).json({
-                _id:newUser._id,
-                fullName:newUser.fullName,
-                email:newUser.email,
-                profilePic:newUser.profilePic
-            });
-
-            //todo: send a welcome email to client
-
-        } else {
-            res.status(400).json({message:"Invalid user data"})
+        try {
+            await sendWelcomeEmail(savedUser.email, savedUser.fullName, ENV.CLIENT_URL);
+        } catch (emailError) {
+            console.error("Failed to send welcome email:", emailError);
         }
-                    
-    } catch(error){
-        console.log("Error in signup controller",error);
-        res.status(500).json({message:"Internal server error"})
+    } catch (error) {
+        console.error("Error in signup controller", error);
 
+        if (!res.headersSent) {
+            return res.status(500).json({ message: "Internal server error" });
+        }
     }
-}
+};
