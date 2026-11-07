@@ -1,11 +1,15 @@
 import express from "express";
 
+import dotenv from "dotenv";
+
+import {send} from "../controllers/message.controller.js"
+
+dotenv.config();
+
 //initialize the router
 
 const router = express.Router();
 
-router.get("/send",(req,res) =>{
-    res.send("Hello from the backend send message route");
-})
+router.get("/send",send);
 
 export default router;
